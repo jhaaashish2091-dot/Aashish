@@ -6,7 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import base64
 
-# Load env
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
@@ -16,81 +16,73 @@ app.secret_key = os.environ.get("SECRET_KEY")
 MONGO_URI = os.environ.get("MONGO_URI")
 
 if not app.secret_key:
-    raise ValueError("⚠️ SECRET_KEY not set")
+    raise ValueError("SECRET_KEY not set")
 if not MONGO_URI:
-    raise ValueError("⚠️ MONGO_URI not set")
+    raise ValueError("MONGO_URI not set")
 
-# ------------------ MONGO ------------------
-client = MongoClient(MONGO_URI)
-db = client.get_database()
-users_collection = db.users
-posts_collection = db.posts
-client.server_info()
-print("✅ MongoDB Connected")
+# ------------------ FILE SETTINGS ------------------
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+# ------------------ MONGO CONNECTION ------------------
+try:
+    client = MongoClient(MONGO_URI)
+    db = client.get_database()
+    users_collection = db.users
+    posts_collection = db.posts
+    client.server_info()
+    print("✅ Connected to MongoDB successfully!")
+except Exception as e:
+    print("❌ MongoDB connection error:", e)
+    raise
 
 # ------------------ HELPERS ------------------
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-MAX_FILE_SIZE = 5 * 1024 * 1024
-
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def image_to_base64(file):
-    return base64.b64encode(file.read()).decode('utf-8')
+    return base64.b64encode(file.read()).decode("utf-8")
 
 # ------------------ ROUTES ------------------
 
-# 🔥 ROOT → SIGNUP FIRST
+# Root → Signup first
 @app.route("/")
 def index():
-    if "user_id" in session:
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("signup"))
-
-# 🔐 DASHBOARD (PROTECTED)
-@app.route("/dashboard")
-def dashboard():
     if "user_id" not in session:
         return redirect(url_for("signup"))
+    return redirect(url_for("dashboard"))
 
-    user_id = session.get("user_id")
-    username = session.get("username")
+# Health check (for monitor)
+@app.route("/health")
+def health():
+    return "OK", 200
 
-    all_posts = list(posts_collection.find().sort("timestamp", -1))
-    for post in all_posts:
-        post["is_owner"] = str(post.get("user_id")) == str(user_id)
-
-    return render_template("dashboard.html", posts=all_posts, username=username)
-
-# ------------------ AUTH ------------------
+# Signup
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-    if "user_id" in session:
-        return redirect(url_for("dashboard"))
-
     if request.method == "POST":
         username = request.form.get("username", "").strip()
+
         if not username:
             return render_template("signup.html", error="Username required")
 
         if users_collection.find_one({"username": username}):
             return render_template("signup.html", error="Username already exists")
 
-        user = {"username": username, "created_at": datetime.utcnow()}
-        result = users_collection.insert_one(user)
+        result = users_collection.insert_one({
+            "username": username,
+            "created_at": datetime.utcnow()
+        })
 
-        session["username"] = username
         session["user_id"] = str(result.inserted_id)
-
+        session["username"] = username
         return redirect(url_for("dashboard"))
 
     return render_template("signup.html")
 
+# Login
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if "user_id" in session:
-        return redirect(url_for("dashboard"))
-
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         user = users_collection.find_one({"username": username})
@@ -98,29 +90,45 @@ def login():
         if not user:
             return render_template("login.html", error="User not found")
 
-        session["username"] = user["username"]
         session["user_id"] = str(user["_id"])
+        session["username"] = user["username"]
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
 
+# Logout
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("signup"))
 
-# ------------------ POSTS ------------------
+# Dashboard (PROTECTED)
+@app.route("/dashboard")
+def dashboard():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    username = session["username"]
+
+    posts = list(posts_collection.find().sort("timestamp", -1))
+    for post in posts:
+        post["is_owner"] = str(post["user_id"]) == user_id
+
+    return render_template("dashboard.html", posts=posts, username=username)
+
+# Create post
 @app.route("/create", methods=["GET", "POST"])
 def create_post():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        title = request.form.get("title")
-        content = request.form.get("content")
+        title = request.form.get("title", "").strip()
+        content = request.form.get("content", "").strip()
 
         if not title or not content:
-            return render_template("create.html", error="All fields required")
+            return render_template("create.html", error="Title & content required")
 
         image_data = None
         image_type = None
@@ -133,7 +141,7 @@ def create_post():
                     return render_template("create.html", error="Image too large")
                 file.seek(0)
                 image_data = image_to_base64(file)
-                image_type = file.filename.rsplit('.', 1)[1].lower()
+                image_type = file.filename.rsplit(".", 1)[1].lower()
 
         posts_collection.insert_one({
             "user_id": ObjectId(session["user_id"]),
@@ -149,6 +157,7 @@ def create_post():
 
     return render_template("create.html")
 
+# Delete post
 @app.route("/delete/<post_id>")
 def delete_post(post_id):
     if "user_id" not in session:
@@ -161,10 +170,39 @@ def delete_post(post_id):
 
     return redirect(url_for("dashboard"))
 
-# ------------------ HEALTH ------------------
-@app.route("/health")
-def health():
-    return "OK", 200
+# Edit post
+@app.route("/edit/<post_id>", methods=["GET", "POST"])
+def edit_post(post_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    post = posts_collection.find_one({
+        "_id": ObjectId(post_id),
+        "user_id": ObjectId(session["user_id"])
+    })
+
+    if not post:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        content = request.form.get("content", "").strip()
+
+        if not title or not content:
+            return render_template("edit.html", post=post, error="All fields required")
+
+        posts_collection.update_one(
+            {"_id": ObjectId(post_id)},
+            {"$set": {
+                "title": title,
+                "content": content,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+        return redirect(url_for("dashboard"))
+
+    return render_template("edit.html", post=post)
 
 # ------------------ RUN ------------------
 if __name__ == "__main__":
