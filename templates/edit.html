@@ -1,0 +1,103 @@
+=<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Post - My Blog</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <h1 class="logo">My Blog</h1>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Home</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-primary">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="create-container">
+            <div class="create-card">
+                <h2>Edit Post</h2>
+                
+                {% if error %}
+                    <div class="error-message">{{ error }}</div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('edit_post', post_id=post._id) }}" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="title">Title</label>
+                        <input 
+                            type="text" 
+                            id="title" 
+                            name="title" 
+                            value="{{ post.title }}"
+                            placeholder="Enter post title"
+                            required
+                            autofocus
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="content">Content</label>
+                        <textarea 
+                            id="content" 
+                            name="content" 
+                            rows="10"
+                            placeholder="Write your post content here..."
+                            required
+                        >{{ post.content }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image">Update Image (Optional)</label>
+                        
+                        {% if post.image %}
+                            <div class="current-image">
+                                <p>Current Image:</p>
+                                <img src="data:image/{{ post.image_type }};base64,{{ post.image }}" alt="{{ post.title }}" style="max-width: 300px; border-radius: 8px;">
+                                <div style="margin-top: 10px;">
+                                    <label>
+                                        <input type="checkbox" name="remove_image" value="true">
+                                        Remove current image
+                                    </label>
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <div class="file-upload-wrapper" style="margin-top: 15px;">
+                            <input 
+                                type="file" 
+                                id="image" 
+                                name="image" 
+                                accept="image/png, image/jpeg, image/jpg, image/gif, image/webp"
+                                class="file-input"
+                            >
+                            <div class="file-upload-info">
+                                <span id="file-name">Choose new image (optional)</span>
+                                <span class="file-size-limit">Max 5MB • PNG, JPG, GIF, WEBP</span>
+                            </div>
+                        </div>
+                        <div id="image-preview" class="image-preview"></div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Update Post</button>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 Anomoyous blog uploder. ( Made by Aashish Jha Production )</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
